@@ -1,0 +1,29 @@
+name: dreamscape-ephemeris
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install pyswisseph "psycopg[binary]" requests
+      - name: Fetch Swiss Ephemeris data files
+        run: |
+          mkdir -p ephe
+          for f in sepl_18.se1 semo_18.se1 seas_18.se1; do
+            curl -fsSL -o "ephe/$f" "https://raw.githubusercontent.com/aloistr/swisseph/master/ephe/$f"
+          done
+      - name: Run job
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          EPHE_PATH: ./ephe
+        run: python ephemeris_job.py
