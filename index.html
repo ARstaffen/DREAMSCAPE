@@ -115,6 +115,13 @@
   .bar { height: 8px; border-radius: 8px; background: var(--line); overflow: hidden; }
   .bar i { display: block; height: 100%; border-radius: 8px; }
   .quote { font-family: var(--serif); font-size: 1.15rem; line-height: 1.5; white-space: pre-wrap; }
+  .term { color: inherit; font: inherit; padding: 0; border-bottom: 1px dotted var(--accent); cursor: help; }
+  .sheet-bg { position: fixed; inset: 0; background: rgba(5,4,15,.6); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--bg2); border-top: 1px solid var(--line);
+           border-radius: 20px 20px 0 0; padding: 22px 20px calc(22px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto;
+           transform: translateY(105%); transition: transform .25s ease; }
+  .sheet.on { transform: none; } .sheet-bg.on { opacity: 1; pointer-events: auto; }
+  .more { color: var(--accent); font-size: .9rem; margin-top: 10px; }
   .err { color: var(--warn); font-size: .9rem; }
   .top { display: flex; justify-content: space-between; align-items: baseline; }
   .link { color: var(--muted); font-size: .85rem; text-decoration: underline; }
@@ -137,7 +144,9 @@
   <section id="s-home" class="screen stack">
     <div class="top"><h1>Dreamscape</h1><button class="link" id="signout">Sign out</button></div>
     <div class="card sky" id="sky"><p class="muted small">Reading tonight's sky…</p></div>
+    <div class="card" id="reading" style="display:none"></div>
     <button class="btn wake" id="woke">I just woke up</button>
+    <button class="btn ghost" id="open-chart">My natal chart</button>
     <div id="resume"></div>
     <div class="card">
       <p class="muted small" style="margin-bottom:6px">Recent dreams</p>
@@ -157,6 +166,12 @@
     <div id="detail"></div>
   </section>
 
+  <!-- NATAL CHART -->
+  <section id="s-chart" class="screen stack">
+    <button class="link" id="chart-back" style="text-decoration:none">&larr; Home</button>
+    <div id="chart"></div>
+  </section>
+
   <!-- DONE -->
   <section id="s-done" class="screen stack">
     <h2>Held and recorded.</h2>
@@ -165,6 +180,10 @@
   </section>
 
 </main>
+
+<div class="sheet-bg" id="sheet-bg"></div>
+<div class="sheet" id="sheet"><p class="sec" id="sheet-kind"></p><h2 id="sheet-title"></h2><p id="sheet-body" style="margin-top:10px"></p>
+  <button class="btn ghost" id="sheet-close" style="margin-top:18px">Close</button></div>
 
 <div class="nav" id="nav" style="display:none">
   <div class="row">
@@ -241,6 +260,7 @@ async function goHome() {
     ? `<button class="btn ghost" id="resume-btn">Finish the dream you started</button>` : "";
   if (saved && saved.raw_text) $("resume-btn").onclick = () => { draft = saved; stepIdx = saved._step || 0; openGuide(); };
   renderSky();
+  renderReading();
   renderEntries();
 }
 
@@ -261,9 +281,9 @@ async function renderSky() {
   if (!eph) { $("sky").innerHTML = `<p class="muted small">Tonight's sky hasn't been calculated yet.</p>`; return; }
   const waxing = Number(eph.sun_moon_elongation) < 180;
   $("sky").innerHTML = `${moonSvg(Number(eph.moon_illumination), waxing)}
-    <div><b>${PRETTY(eph.moon_phase)} in ${SIGN_LABEL(eph.moon_sign)}</b>
-    <p class="muted small">${Math.round(eph.moon_illumination)}% lit${ctx?.moon_natal_house ? ` · your ${ordinal(ctx.moon_natal_house)} house` : ""}</p>
-    ${ctx ? `<p class="muted small">Day of ${SIGN_LABEL(ctx.day_ruler)} · night of ${SIGN_LABEL(ctx.night_ruler)}</p>` : ""}</div>`;
+    <div><b>${term(PRETTY(eph.moon_phase), eph.moon_phase)} in ${term(SIGN_LABEL(eph.moon_sign), eph.moon_sign)}</b>
+    <p class="muted small">${Math.round(eph.moon_illumination)}% lit${ctx?.moon_natal_house ? ` · ${houseTerm(ctx.moon_natal_house)}` : ""}</p>
+    ${ctx ? `<p class="muted small">${term("Day", "day_ruler")} of ${term(SIGN_LABEL(ctx.day_ruler), ctx.day_ruler)} · night of ${term(SIGN_LABEL(ctx.night_ruler), ctx.night_ruler)}</p>` : ""}</div>`;
 }
 function ordinal(n) { return n + (["th","st","nd","rd"][(n % 100 - 20) % 10] || ["th","st","nd","rd"][n % 100] || "th"); }
 
@@ -482,18 +502,18 @@ async function openDetail(id) {
         ${ss.watch ? `<p class="small"><b>Watch:</b> ${escapeHtml(ss.watch)}</p>` : ""}
       </div>
       <div class="card"><p class="sec">Sky triggers</p>
-        ${(a.astrological_triggers || []).map(t => `<div class="trig"><b>${SIGN_LABEL(t.transit)} ${escapeHtml(t.aspect || "")}${t.natal ? " natal " + escapeHtml(PRETTY(t.natal)) : ""}</b>
-          ${t.orb != null ? `<span class="tag ${t.weight === "primary" ? "primary" : ""}">${t.orb}°</span>` : ""}
+        ${(a.astrological_triggers || []).map(t => `<div class="trig"><b>${term(SIGN_LABEL(t.transit), t.transit)} ${G[t.aspect] ? term(t.aspect, t.aspect) : escapeHtml(t.aspect || "")}${t.natal ? " natal " + (G[t.natal] ? term(PRETTY(t.natal), t.natal) : escapeHtml(PRETTY(t.natal))) : ""}</b>
+          ${t.orb != null ? `<span class="tag ${t.weight === "primary" ? "primary" : ""}">${t.orb}° ${term("orb", "orb")}</span>` : ""}
           <p class="muted small">${escapeHtml(t.reading || "")}</p></div>`).join("")}
       </div>
       <div class="card"><p class="sec">Archetypes</p>
-        ${(a.archetypal_mapping || []).map(m => `<div class="trig"><b>${escapeHtml(m.archetype || "")}</b><span class="tag">${SIGN_LABEL(m.ruler)}</span>
+        ${(a.archetypal_mapping || []).map(m => `<div class="trig"><b>${escapeHtml(m.archetype || "")}</b><span class="tag">${term(SIGN_LABEL(m.ruler), m.ruler)}</span>
           <p class="small">${escapeHtml(m.figure || "")}</p><p class="muted small">${escapeHtml(m.reading || "")}</p></div>`).join("")}
       </div>
       <div class="card stack"><p class="sec">Elements</p>
         <div class="bars">${["fire","water","air","earth"].map(k => `<span>${SIGN_LABEL(k)}</span>
           <div class="bar"><i style="width:${(counts[k] || 0) / max * 100}%;background:${EL_COLOR[k]}"></i></div><span>${counts[k] || 0}</span>`).join("")}</div>
-        ${a.elemental_synergy_index != null ? `<p class="muted small">Synergy with the sky: ${Math.round(a.elemental_synergy_index * 100)}%</p>` : ""}
+        ${a.elemental_synergy_index != null ? `<p class="muted small">${term("Synergy with the sky", "synergy")}: ${Math.round(a.elemental_synergy_index * 100)}%</p>` : ""}
         ${em.reading ? `<p class="small">${escapeHtml(em.reading)}</p>` : ""}
       </div>
       ${ss.body ? `<div class="card"><p class="sec">Body</p><p class="small">${escapeHtml(ss.body)}</p></div>` : ""}
@@ -506,6 +526,132 @@ async function openDetail(id) {
       <p class="muted small">Lucidity ${d.lucid_clarity} · Vividness ${d.vividness} · Intensity ${d.emotional_intensity} · Resonance ${d.spiritual_resonance} · Recall ${d.recall_completeness}</p>
     </div></div>`;
   $("detail").innerHTML = html;
+}
+
+// ---------- glossary (tap-to-explain) ----------
+const G = {
+  sun:["Planet","The Sun","Your core self, will, and vitality. Where it travels, attention and energy go."],
+  moon:["Planet","The Moon","Emotions, instincts, the body, and dreams. It moves fastest, changing sign every 2 to 3 days, so it colors each day's mood."],
+  mercury:["Planet","Mercury","Thought, speech, messages, and how you process information."],
+  venus:["Planet","Venus","Love, bonds, values, beauty, and what you're drawn to."],
+  mars:["Planet","Mars","Drive, anger, courage, conflict, and the will to act or fight."],
+  jupiter:["Planet","Jupiter","Growth, belief, meaning, luck, and excess. The wise teacher."],
+  saturn:["Planet","Saturn","Structure, limits, time, responsibility, and hard-won lessons."],
+  uranus:["Planet","Uranus","Sudden change, rebellion, awakening, and the unconventional."],
+  neptune:["Planet","Neptune","Dreams, intuition, spirit, illusion, and dissolving boundaries. The planet most tied to dreaming."],
+  pluto:["Planet","Pluto","Power, death and rebirth, the hidden, and deep transformation. Ruler of the Shadow."],
+  chiron:["Point","Chiron","The wounded healer: your deepest hurt, and the wisdom it gives you to help others."],
+  true_node:["Point","North Node","The direction of growth this lifetime: unfamiliar territory you're meant to move toward."],
+  asc:["Angle","Ascendant (rising)","How you meet the world and first appear: your outer style and body."],
+  mc:["Angle","Midheaven","Your public path, career, and reputation: the top of your chart."],
+  aries:["Sign","Aries","Fire, cardinal. Initiative, courage, directness, impatience. The warrior."],
+  taurus:["Sign","Taurus","Earth, fixed. Steadiness, the senses, loyalty, comfort, stubbornness."],
+  gemini:["Sign","Gemini","Air, mutable. Curiosity, talk, quick wit, restlessness, duality."],
+  cancer:["Sign","Cancer","Water, cardinal. Home, care, family, memory, protection."],
+  leo:["Sign","Leo","Fire, fixed. Pride, creativity, heart, play, the need to be seen."],
+  virgo:["Sign","Virgo","Earth, mutable. Detail, service, health, analysis, refinement."],
+  libra:["Sign","Libra","Air, cardinal. Balance, partnership, fairness, beauty, diplomacy."],
+  scorpio:["Sign","Scorpio","Water, fixed. Depth, intensity, secrets, power, transformation."],
+  sagittarius:["Sign","Sagittarius","Fire, mutable. Adventure, belief, truth-seeking, freedom."],
+  capricorn:["Sign","Capricorn","Earth, cardinal. Ambition, discipline, structure, endurance."],
+  aquarius:["Sign","Aquarius","Air, fixed. Community, ideals, independence, the future."],
+  pisces:["Sign","Pisces","Water, mutable. Dreams, compassion, intuition, surrender, the unseen."],
+  h1:["House","1st house","Self, body, identity, and how you show up."],
+  h2:["House","2nd house","Money, possessions, values, and self-worth."],
+  h3:["House","3rd house","Communication, learning, siblings, neighbors, short trips."],
+  h4:["House","4th house","Home, family, roots, ancestry, the private self."],
+  h5:["House","5th house","Creativity, romance, pleasure, play, children."],
+  h6:["House","6th house","Daily routines, work, health, and service."],
+  h7:["House","7th house","Partnerships, marriage, close allies, and open rivals."],
+  h8:["House","8th house","Death and rebirth, shared resources, intimacy, the occult. A key dream house."],
+  h9:["House","9th house","Belief, philosophy, higher learning, long journeys."],
+  h10:["House","10th house","Career, public role, reputation, and life direction."],
+  h11:["House","11th house","Friends, groups, causes, hopes for the future."],
+  h12:["House","12th house","The hidden, the subconscious, dreams, solitude, and what's kept out of sight. The house most tied to dreaming."],
+  conjunction:["Aspect","Conjunction (0°)","Two energies fused together. Intense and concentrated."],
+  sextile:["Aspect","Sextile (60°)","An easy, cooperative link. Opportunity if you act on it."],
+  square:["Aspect","Square (90°)","Friction and tension that demand action. Uncomfortable but motivating."],
+  trine:["Aspect","Trine (120°)","Natural flow and harmony. Gifts that come easily."],
+  opposition:["Aspect","Opposition (180°)","A pull between two sides. Awareness through contrast, often through other people."],
+  new_moon:["Moon phase","New moon","Darkness and beginnings. Seeds, intentions, inward focus."],
+  waxing_crescent:["Moon phase","Waxing crescent","First light after the new moon. Early momentum and commitment."],
+  first_quarter:["Moon phase","First quarter","Half lit and growing. A turning point that calls for action."],
+  waxing_gibbous:["Moon phase","Waxing gibbous","Almost full. Refining, building, anticipation."],
+  full_moon:["Moon phase","Full moon","Peak light. Culmination, revelation, heightened emotion, and often vivid dreams."],
+  waning_gibbous:["Moon phase","Waning gibbous","Just past full. Sharing, gratitude, integrating what was revealed."],
+  last_quarter:["Moon phase","Last quarter","Half lit and shrinking. Release, reassessment, letting go."],
+  waning_crescent:["Moon phase","Waning crescent","The last sliver. Rest, surrender, and dreams of endings."],
+  retrograde:["Term","Retrograde","When a planet appears to move backward from Earth. Read as a time to revisit, review, and meet the past again."],
+  day_ruler:["Term","Day and night rulers","In the ancient Chaldean system, each day and night is ruled by a planet in a fixed order, which colors its tone. Saturday is Saturn's day."],
+  transit:["Term","Transit","Where a planet is in the sky right now, compared to where it was when you were born."],
+  orb:["Term","Orb","How close an aspect is to exact, in degrees. Smaller means stronger."],
+  synergy:["Term","Elemental synergy","How closely your dream's balance of fire, water, air, and earth matches the elements of the sky at that moment."],
+};
+const ORD = n => ordinal(n);
+function term(text, key) { return G[key] ? `<button class="term" data-g="${key}">${text}</button>` : text; }
+function houseTerm(n) { return term(`your ${ORD(n)} house`, "h" + n); }
+document.addEventListener("click", e => {
+  const t = e.target.closest(".term"); if (!t) return;
+  e.stopPropagation();
+  const [kind, title, body] = G[t.dataset.g];
+  $("sheet-kind").textContent = kind; $("sheet-title").textContent = title; $("sheet-body").textContent = body;
+  $("sheet").classList.add("on"); $("sheet-bg").classList.add("on");
+}, true);
+function closeSheet() { $("sheet").classList.remove("on"); $("sheet-bg").classList.remove("on"); }
+$("sheet-close").onclick = closeSheet; $("sheet-bg").onclick = closeSheet;
+
+// ---------- daily reading ----------
+async function renderReading() {
+  const today = localDate(profile.current_tz);
+  const { data } = await sb.from("astro_readings").select("content, local_date")
+    .eq("kind", "daily").lte("local_date", today).order("local_date", { ascending: false }).limit(1).maybeSingle();
+  const box = $("reading");
+  if (!data) { box.style.display = "none"; return; }
+  const c = data.content, stale = data.local_date !== today;
+  box.style.display = "block";
+  box.innerHTML = `<p class="sec">${stale ? "Latest sky reading" : "Today's sky"}</p>
+    <h2 style="font-size:1.45rem">${escapeHtml(c.headline || "")}</h2>
+    <p class="small" style="margin-top:8px">${escapeHtml(c.summary || "")}</p>
+    <div id="reading-more" style="display:none" class="stack">
+      ${c.moon ? `<p class="small" style="margin-top:12px"><b>Moon:</b> ${escapeHtml(c.moon)}</p>` : ""}
+      ${(c.transits || []).map(t => `<div class="trig"><b>${escapeHtml(t.name)}</b><p class="muted small">${escapeHtml(t.body)}</p></div>`).join("")}
+      ${c.rulers ? `<p class="muted small">${escapeHtml(c.rulers)} ${term("What's this?", "day_ruler")}</p>` : ""}
+      ${c.for_tonight ? `<p class="small"><b>Tonight:</b> ${escapeHtml(c.for_tonight)}</p>` : ""}
+    </div>
+    <button class="more" id="reading-toggle">Read more</button>`;
+  $("reading-toggle").onclick = () => {
+    const m = $("reading-more"), open = m.style.display === "none";
+    m.style.display = open ? "block" : "none"; $("reading-toggle").textContent = open ? "Show less" : "Read more";
+  };
+}
+
+// ---------- natal chart page ----------
+$("open-chart").onclick = openChart;
+$("chart-back").onclick = goHome;
+async function openChart() {
+  show("s-chart");
+  $("chart").innerHTML = `<p class="muted small">Opening…</p>`;
+  const [{ data: r }, { data: pts }] = await Promise.all([
+    sb.from("astro_readings").select("content").eq("kind", "natal").maybeSingle(),
+    sb.from("natal_points").select("point, sign, degree_in_sign, house, is_retrograde"),
+  ]);
+  const order = ["sun","moon","asc","mercury","venus","mars","jupiter","saturn","uranus","neptune","pluto","chiron","true_node","mc"];
+  const rows = (pts || []).filter(p => order.includes(p.point)).sort((a, b) => order.indexOf(a.point) - order.indexOf(b.point));
+  const c = r?.content;
+  let html = `<div class="stack"><h1>${c ? escapeHtml(c.title) : "Your natal chart"}</h1>
+    ${c ? `<p class="muted">${escapeHtml(c.intro)}</p>` : ""}
+    <div class="card"><p class="sec">Placements</p>
+      ${rows.map(p => `<div class="trig" style="display:flex;justify-content:space-between;gap:10px">
+        <span>${term(G[p.point]?.[1] || PRETTY(p.point), p.point)}</span>
+        <span class="muted small" style="text-align:right">${Math.floor(p.degree_in_sign)}° ${term(SIGN_LABEL(p.sign), p.sign)}${p.house ? " · " + term(ORD(p.house), "h" + p.house) : ""}${p.is_retrograde ? " · " + term("Rx", "retrograde") : ""}</span></div>`).join("")}
+    </div>`;
+  if (c) {
+    html += `<div class="card stack"><p class="sec">Your big three</p>${c.big_three.map(b => `<div><b>${escapeHtml(b.title)}</b><p class="small muted" style="margin-top:4px">${escapeHtml(b.body)}</p></div>`).join("")}</div>
+      <div class="card stack"><p class="sec">Themes</p>${c.sections.map(b => `<div><b>${escapeHtml(b.title)}</b><p class="small" style="color:var(--accent2);margin-top:2px">${escapeHtml(b.placements)}</p><p class="small muted" style="margin-top:4px">${escapeHtml(b.body)}</p></div>`).join("")}</div>
+      <div class="card stack"><p class="sec">Key aspects</p>${c.key_aspects.map(b => `<div><b>${escapeHtml(b.aspect)}</b><p class="small muted" style="margin-top:4px">${escapeHtml(b.body)}</p></div>`).join("")}</div>
+      <div class="card"><p class="sec">For your dreams</p><p class="small">${escapeHtml(c.for_your_dreams)}</p></div>`;
+  }
+  $("chart").innerHTML = html + "</div>";
 }
 
 if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js").catch(() => {}); }
