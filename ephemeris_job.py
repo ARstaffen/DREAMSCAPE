@@ -108,7 +108,23 @@ def aspect_between(lon_a, spd_a, lon_b, spd_b, orb_limit):
 def moon_phase(sun_lon, moon_lon):
     elong = (moon_lon - sun_lon) % 360
     illum = (1 - math.cos(math.radians(elong))) / 2 * 100
-    phase = PHASES[int(((elong + 22.5) % 360) // 45)]
+    w = 6.5   # principal phases only within ~half a day of exact
+    if elong < w or elong > 360 - w:
+        phase = "new_moon"
+    elif abs(elong - 90) <= w:
+        phase = "first_quarter"
+    elif abs(elong - 180) <= w:
+        phase = "full_moon"
+    elif abs(elong - 270) <= w:
+        phase = "last_quarter"
+    elif elong < 90:
+        phase = "waxing_crescent"
+    elif elong < 180:
+        phase = "waxing_gibbous"
+    elif elong < 270:
+        phase = "waning_gibbous"
+    else:
+        phase = "waning_crescent"
     return round(elong, 3), round(illum, 2), phase
 
 
